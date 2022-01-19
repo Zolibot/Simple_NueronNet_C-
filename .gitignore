@@ -45,7 +45,7 @@ Thumbs.db
 .gitmodules
 build_libs.bat
 LICENSE
-README.md
+
 SConstruct
 .kdev4
 *.kdev4
