@@ -14,8 +14,6 @@ using namespace std;
 
 void testNueralNetFloat()
 {
-    cout << "testRandomGenerator" << endl
-         << endl;
     cout << "Check NueeralNet.randoms()" << endl;
 
     NueralNet *net = new NueralNet();
