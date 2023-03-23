@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20.5)
+project(SipleNueronNet)
+set(SOURCE_EXE src/main.cpp)		
+include_directories(neural_net_lib)
+add_executable(main ${SOURCE_EXE})
+add_subdirectory(neural_net_lib)
+target_link_libraries(main SimpleNueronNetLib)
