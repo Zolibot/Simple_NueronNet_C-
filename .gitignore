@@ -13,7 +13,7 @@
 *.user
 *.sln
 *.csproj
-
+*.code-workspace
 # Packages #
 ############
 # it's better to unpack these files and commit the raw source
@@ -35,6 +35,8 @@
 CMakeFiles/
 *.cmake
 *Cache.txt
+build/
+bin/
 # OS generated files #
 ######################
 .DS_Store
