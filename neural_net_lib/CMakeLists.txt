@@ -1,4 +1,4 @@
 cmake_minimum_required(VERSION 3.20.5)
-project(SimpleNueronNetLib)
-set(SOURCE_LIB NueralNetController.cpp NueralNetFloat.cpp)
-add_library(SimpleNueronNetLib SHARED ${SOURCE_LIB})
+project(SimpleNeuralNetLib)
+set(SOURCE_LIB NeuralNet.cpp NeuralNetController.cpp MnistReader.cpp)
+add_library(SimpleNeuralNetLib SHARED ${SOURCE_LIB})

@@ -1,219 +1,78 @@
 #include <iostream>
-#include <fstream>
-#include <sstream>
-
 #include <vector>
-#include <time.h>
-#include <cstdlib>
-#include <random>
 
-#include "NueralNetController.h"
-#include "NueralNetFloat.h"
+#include "NeuralNetController.h"
 
 using namespace std;
 
-void testNueralNetFloat()
+// Демонстрация работы нейронной сети
+int main()
 {
-    cout << "Check NueeralNet.randoms()" << endl;
+    cout << "Neural Network Demo" << endl;
+    cout << "===================" << endl << endl;
 
-    NueralNet *net = new NueralNet();
-    vector<vector<float>> arr;
+    // Создаём сеть: 6 входов -> 10 скрытых -> 4 выхода
+    NeuralNetController brain(0.1f);
+    brain.addLayer(6);
+    brain.addLayer(10);
+    brain.addLayer(4);
+    brain.initialize();
 
-    int NUERON = 3;
-    int DEEPS = 2;
-
-    int count = 0;
-    for (int x = 0; x < NUERON; x++)
-    {
-        vector<float> a;
-        arr.push_back(a);
-        for (int y = 0; y < DEEPS; y++)
-        {
-            if (count % 2 == 0)
-            {
-                arr[x].push_back(count);
-            }
-            else
-            {
-                arr[x].push_back(0.0);
-            }
-            count++;
-        }
-    }
-
-    for (int i = 0; i < NUERON; i++)
-    {
-        for (int y = 0; y < DEEPS; y++)
-        {
-            cout << arr[i][y] << "  ";
-        }
-        cout << endl;
-    }
-
-    net->randoms(arr);
-
-    for (int i = 0; i < NUERON; i++)
-    {
-        for (int y = 0; y < DEEPS; y++)
-        {
-            cout << arr[i][y] << "  ";
-        }
-        cout << endl;
-    }
-}
-
-
-void testNueralNetController()
-{
-    cout << "testNuearlNetController" << endl
-         << endl;
-
-    NueralNetController *brain = new NueralNetController(0.1F);
-    brain->addLayer(6);
-    brain->addLayer(10);
-    brain->addLayer(4);
-    brain->startNueralNetController();
-
-    float control[] = {0, 0.3, 1, 0.1, 1, 0};
-    float answer[] = {1, 0, 1, 0};
-
-    clock_t start, end;
-    start = clock();
-
-    int count = 0;
-    do
-    {
-        brain->setData(control, sizeof(control) / sizeof(float), 0);
-
-        brain->learns(answer);
-
-        if (count % 10000 == 0)
-        {
-            cout << "Epoch: " << count << endl;
-        }
-        count++;
-    } while (brain->getError() > 0.0016);
-
-    cout << "Input data" << endl;
-
-    for (int x = 0; x < brain->layers->at(2).size(); x++)
-    {
-        cout << brain->layers->at(2)[x][0] << endl;
-    }
-    cout << "Target data" << endl;
-    for (int x = 0; x < sizeof(answer) / sizeof(float); x++)
-    {
-        cout << answer[x] << endl;
-    }
-
-    cout << "Total iteration " << count << endl;
-    cout << "Error " << brain->getError() << endl;
-    end = clock();
-    printf("time: %f", (end - start) / ((double)CLOCKS_PER_SEC));
+    cout << "Network: 6 -> 10 -> 4" << endl;
+    cout << "Layers: " << brain.layerCount() << endl;
     cout << endl;
 
-    vector<string> sss = brain->saveNueralNetControllerState();
-    cout << "check the weight" << endl;
-    for (int x = 0; x < sss.size(); x++)
-    {
-        cout << sss.at(x) << endl;
-    }
-    // Write weight to file
-    ofstream weightSave;
-    weightSave.open("weightSave.w", ios_base::out);
-    if (weightSave.is_open())
-    {
+    // Обучаем на простом паттерне
+    float input[] = {0, 0.3f, 1, 0.1f, 1, 0};
+    float target[] = {1, 0, 1, 0};
 
-        for (int x = 0; x < sss.size(); x++)
-        {
-            weightSave << sss.at(x) << endl;
-        }
-        weightSave.close();
-    }
+    cout << "Training..." << endl;
+    int iterations = 0;
+    clock_t start = clock();
 
-}
-void loadStateTestNueralNetController()
-{
-    cout << "loadStateTestNuershow NueralNetController" << endl
-         << endl;
-
-    // Load weight from file
-    ifstream weightSave;
-    weightSave.open("weightSave.w", ios_base::in);
-    string str;
-    vector<string> vecString;
-
-    if (weightSave.is_open())
-    {
-
-        while (weightSave)
-        {
-            getline(weightSave, str);
-            vecString.push_back(str);
-            str.clear();
-        }
-        weightSave.close();
-    }
-
-    // Load nueralNetController from file
-    NueralNetController *brain = new NueralNetController(vecString, 0.1F);
-
-    float control[] = {0, 0.3, 1, 0.1, 1, 0};
-    float answer[] = {1, 0, 1, 0};
-
-    clock_t start, end;
-    start = clock();
-
-    int count = 0;
     do
     {
-        brain->setData(control, sizeof(control) / sizeof(float), 0);
+        brain.setData(input, 6, 0);
+        brain.train(target);
 
-        brain->forWards();
+        if (iterations % 10000 == 0)
+            cout << "  Iteration: " << iterations << ", Error: " << brain.getError() << endl;
 
-        if (count % 10000 == 0)
-        {
-            cout << "Epoch: " << count << endl;
-            cout << "\r";
-        }
-        count++;
-    } while (brain->getError() > 0.0016);
+        iterations++;
+    } while (brain.getError() > 0.0016f && iterations < 500000);
 
-    cout << "Input data" << endl;
-    for (int x = 0; x < brain->layers->at(2).size(); x++)
-    {
-        cout << brain->layers->at(2)[x][0] << endl;
-    }
+    clock_t end = clock();
 
-    cout << "Target data" << endl;
-    for (int x = 0; x < sizeof(answer) / sizeof(float); x++)
-    {
-        cout << answer[x] << endl;
-    }
-
-    cout << "Total iteration " << count << endl;
-    cout << "Error " << brain->getError() << endl;
-    end = clock();
-    printf("time: %f", (end - start) / ((double)CLOCKS_PER_SEC));
+    cout << endl;
+    cout << "Results after " << iterations << " iterations:" << endl;
+    cout << "  Error: " << brain.getError() << endl;
+    cout << "  Time: " << (end - start) / static_cast<double>(CLOCKS_PER_SEC) << "s" << endl;
     cout << endl;
 
-    cout << "check the weight" << endl;
-    vector<string> sss = brain->saveNueralNetControllerState();
+    // Вывод результатов
+    cout << "Input: ";
+    for (int i = 0; i < 6; i++) cout << input[i] << " ";
+    cout << endl;
 
-    for (int x = 0; x < sss.size(); x++)
-    {
-        cout << sss.at(x) << endl;
-    }
+    cout << "Target: ";
+    for (int i = 0; i < 4; i++) cout << target[i] << " ";
+    cout << endl;
 
-}
+    cout << "Output: ";
+    const auto &out = brain.getLayer(2);
+    for (size_t i = 0; i < out.size(); i++)
+        cout << out[i].output << " ";
+    cout << endl;
 
-int main(int argc, char **argv)
-{
-    testNueralNetFloat();
-    testNueralNetController();
-    loadStateTestNueralNetController();
+    // Сохраняем и загружаем
+    auto saved = brain.saveState();
+    cout << endl << "Saved state: " << saved.size() << " lines" << endl;
+
+    NeuralNetController brain2(saved, 0.1f);
+    cout << "Loaded network layers: " << brain2.layerCount() << endl;
+
+    cout << endl << "Done. Press Enter to exit..." << endl;
     int t = 0;
     cin >> t;
-
     return 0;
 }
