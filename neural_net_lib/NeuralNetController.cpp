@@ -80,9 +80,7 @@ void NeuralNetController::addWeights()
     {
         int outputNeurons = neuronCount(i + 1);
         int inputNeurons = neuronCount(i);
-
-        WeightMatrix wm(outputNeurons, std::vector<float>(inputNeurons, 0.0f));
-        weights_.push_back(std::move(wm));
+        weights_.emplace_back(outputNeurons, std::vector<float>(inputNeurons, 0.0f));
     }
 }
 
@@ -259,28 +257,24 @@ std::vector<std::string> NeuralNetController::saveState() const
     // Первая строка: размеры слоёв
     std::ostringstream sizes;
     for (const auto &layer : layers_)
-    {
         sizes << layer.size() << " ";
-    }
     result.push_back(sizes.str());
 
     // Веса
-    std::ostringstream weights;
+    std::ostringstream wss;
     for (size_t i = 0; i < weights_.size(); i++)
     {
         for (size_t x = 0; x < weights_[i][0].size(); x++)
         {
             for (size_t u = 0; u < weights_[i].size(); u++)
-            {
-                weights << weights_[i][u][x] << " ";
-            }
-            weights << "\n";
+                wss << weights_[i][u][x] << " ";
+            wss << "\n";
         }
     }
 
     std::string line;
-    std::istringstream ws(weights.str());
-    while (std::getline(ws, line))
+    std::istringstream wsi(wss.str());
+    while (std::getline(wsi, line))
     {
         if (!line.empty())
             result.push_back(line);

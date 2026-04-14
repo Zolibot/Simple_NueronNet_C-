@@ -15,6 +15,8 @@ float NeuralNet::random(float low, float high)
 
 float NeuralNet::sigmoid(float x)
 {
+    if (x > 20.0f) return 1.0f;
+    if (x < -20.0f) return 0.0f;
     return 1.0f / (1.0f + std::exp(-x));
 }
 
@@ -25,92 +27,90 @@ float NeuralNet::sigmoidDerivative(float activatedOutput)
 
 void NeuralNet::forwardPass(const Layer &inL, const WeightMatrix &weN, Layer &ouL, int skipBiasIndex)
 {
-    for (size_t i = 0; i < weN.size(); i++)
+    const int fanOut = static_cast<int>(weN.size());
+    const int fanIn  = static_cast<int>(weN[0].size());
+
+    for (int i = 0; i < fanOut; i++)
     {
-        // Пропускаем bias-нейрон
-        if (static_cast<int>(i) == skipBiasIndex)
-            continue;
+        if (i == skipBiasIndex) continue;
 
         float sum = 0.0f;
-        for (size_t u = 0; u < weN[0].size(); u++)
-        {
+        for (int u = 0; u < fanIn; u++)
             sum += inL[u].output * weN[i][u];
-        }
+
         ouL[i].output = sigmoid(sum);
     }
 }
 
 void NeuralNet::reversePass(const Layer &inL, const WeightMatrix &weN, Layer &ouL, int skipBiasIndex)
 {
-    for (size_t i = 0; i < weN[0].size(); i++)
+    const int fanOut = static_cast<int>(weN.size());
+    const int fanIn  = static_cast<int>(weN[0].size());
+
+    for (int i = 0; i < fanIn; i++)
     {
-        if (static_cast<int>(i) == skipBiasIndex)
-            continue;
+        if (i == skipBiasIndex) continue;
 
         float sum = 0.0f;
-        for (size_t u = 0; u < weN.size(); u++)
-        {
+        for (int u = 0; u < fanOut; u++)
             sum += inL[u].output * weN[u][i];
-        }
+
         ouL[i].output = sigmoid(sum);
     }
 }
 
 void NeuralNet::randomizeWeights(WeightMatrix &we, WeightInit init)
 {
-    float scale = 0.5f; // default uniform range
+    float scale = 0.5f;
 
     if (init == INIT_XAVIER || init == INIT_HE)
     {
         int fanIn = static_cast<int>(we[0].size());
         int fanOut = static_cast<int>(we.size());
-
         if (init == INIT_XAVIER)
             scale = std::sqrt(2.0f / (fanIn + fanOut));
-        else // INIT_HE
+        else
             scale = std::sqrt(2.0f / fanIn);
     }
 
     std::uniform_real_distribution<float> dist(-scale, scale);
     for (auto &row : we)
-    {
         for (auto &w : row)
-        {
             w = dist(rng_);
-        }
-    }
 }
 
 void NeuralNet::computeError(const Layer &inL, const WeightMatrix &weN, const Layer &ouL, Layer &outInL)
 {
-    for (size_t i = 0; i < weN[0].size(); i++)
+    const int fanIn  = static_cast<int>(weN[0].size());
+    const int fanOut = static_cast<int>(weN.size());
+
+    // Propagate errors backwards, skip bias neuron
+    for (int i = 0; i < fanIn - 1; i++)
     {
-        outInL[i].error = 0.0f;
-        for (size_t u = 0; u < weN.size(); u++)
-        {
-            outInL[i].error += weN[u][i] * ouL[u].error;
-        }
-        // Умножаем на производную сигмоиды
-        outInL[i].error *= sigmoidDerivative(outInL[i].output);
+        float err = 0.0f;
+        for (int u = 0; u < fanOut; u++)
+            err += weN[u][i] * ouL[u].error;
+
+        outInL[i].error = err;
+        // sigmoidDerivative applied in backwardPass
     }
 }
 
 void NeuralNet::backwardPass(const Layer &inL, WeightMatrix &weN, const Layer &ouL, float learningRate)
 {
-    for (size_t i = 0; i < weN.size(); i++)
+    const int fanOut = static_cast<int>(weN.size());
+    const int fanIn  = static_cast<int>(weN[0].size());
+
+    for (int i = 0; i < fanOut; i++)
     {
-        float gradient = ouL[i].error * sigmoidDerivative(ouL[i].output);
-        for (size_t u = 0; u < weN[0].size(); u++)
-        {
-            weN[i][u] += learningRate * gradient * inL[u].output;
-        }
+        float grad = ouL[i].error * sigmoidDerivative(ouL[i].output);
+        for (int u = 0; u < fanIn; u++)
+            weN[i][u] += learningRate * grad * inL[u].output;
     }
 }
 
 void NeuralNet::setOutputError(const float targets[], int len, Layer &ouL)
 {
     for (int i = 0; i < len; i++)
-    {
         ouL[i].error = targets[i] - ouL[i].output;
-    }
 }

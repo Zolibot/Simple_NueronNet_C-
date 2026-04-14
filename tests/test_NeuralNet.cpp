@@ -160,43 +160,37 @@ TEST_CASE("NeuralNet::randomizeWeights fills correctly", "[NeuralNet]")
 
     SECTION("He init (default): values are small for large fanIn")
     {
-        // He scale = sqrt(2/fanIn). For fanIn=3: sqrt(2/3) ≈ 0.816
-        // Values should be within [-2*scale, +2*scale] ≈ [-1.63, +1.63]
-        WeightMatrix w = {{0,0,0},{0,0,0},{0,0,0}}; // fanIn=3, fanOut=3
+        WeightMatrix w = {{0,0,0},{0,0,0},{0,0,0}};
         net.randomizeWeights(w, INIT_HE);
-
         float scale = std::sqrt(2.0f / 3.0f);
-        for (auto &row : w)
-            for (auto &v : row)
-            {
-                REQUIRE(v >= -2.0f * scale);
-                REQUIRE(v <= 2.0f * scale);
-            }
+        for (auto &row : w) for (auto &v : row)
+        {
+            REQUIRE(v >= -2.0f * scale);
+            REQUIRE(v <= 2.0f * scale);
+        }
     }
 
     SECTION("Xavier init: values scale with fanIn+fanOut")
     {
-        WeightMatrix w(10, std::vector<float>(100, 0.0f)); // fanIn=100, fanOut=10
+        WeightMatrix w(10, std::vector<float>(100, 0.0f));
         net.randomizeWeights(w, INIT_XAVIER);
-        float scale = std::sqrt(2.0f / 110.0f); // ≈ 0.135
-        for (auto &row : w)
-            for (auto &v : row)
-            {
-                REQUIRE(v >= -2.0f * scale);
-                REQUIRE(v <= 2.0f * scale);
-            }
+        float scale = std::sqrt(2.0f / 110.0f);
+        for (auto &row : w) for (auto &v : row)
+        {
+            REQUIRE(v >= -2.0f * scale);
+            REQUIRE(v <= 2.0f * scale);
+        }
     }
 
     SECTION("Uniform init: within weightRange")
     {
         WeightMatrix w = {{0,0,0},{0,0,0},{0,0,0}};
         net.randomizeWeights(w, INIT_UNIFORM);
-        for (auto &row : w)
-            for (auto &v : row)
-            {
-                REQUIRE(v >= -net.weightRange);
-                REQUIRE(v <= net.weightRange);
-            }
+        for (auto &row : w) for (auto &v : row)
+        {
+            REQUIRE(v >= -net.weightRange);
+            REQUIRE(v <= net.weightRange);
+        }
     }
 }
 

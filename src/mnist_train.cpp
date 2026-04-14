@@ -12,17 +12,17 @@
 // ============================================================================
 static const std::string TRAIN_IMAGES = "../data/train-images-idx3-ubyte";
 static const std::string TRAIN_LABELS = "../data/train-labels-idx1-ubyte";
-static const std::string TEST_IMAGES  = "../data/t10k-images-idx3-ubyte";
-static const std::string TEST_LABELS  = "../data/t10k-labels-idx1-ubyte";
+static const std::string TEST_IMAGES = "../data/t10k-images-idx3-ubyte";
+static const std::string TEST_LABELS = "../data/t10k-labels-idx1-ubyte";
 
-static const int INPUT_SIZE  = 784;
+static const int INPUT_SIZE = 784;
 static const int HIDDEN_SIZE = 30;
 static const int OUTPUT_SIZE = 10;
 
 static const float LEARNING_RATE = 0.5f;
-static const int   MAX_EPOCHS    = 5;
-static const int   TRAIN_LIMIT   = 5000;
-static const int   TEST_LIMIT    = 0;
+static const int MAX_EPOCHS = 5;
+static const int TRAIN_LIMIT = 5000;
+static const int TEST_LIMIT = 0;
 
 static const std::string WEIGHTS_FILE = "../data/mnist_weights.w";
 
@@ -52,13 +52,13 @@ static int predictDigit(const NeuralNetController &brain, int outputLayerIndex)
 }
 
 static float evaluateAccuracy(NeuralNetController &brain, const MnistDataset &dataset,
-                               int outputLayerIndex, bool verbose = false)
+                              int outputLayerIndex, bool verbose = false)
 {
     int correct = 0;
     for (size_t i = 0; i < dataset.size(); i++)
     {
         brain.setData(dataset.images[i].pixels.data(),
-                       static_cast<int>(dataset.images[i].pixels.size()), 0);
+                      static_cast<int>(dataset.images[i].pixels.size()), 0);
         brain.forwardPass();
         if (predictDigit(brain, outputLayerIndex) == dataset.labels[i])
             correct++;
