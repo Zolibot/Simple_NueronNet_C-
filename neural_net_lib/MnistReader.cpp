@@ -5,7 +5,57 @@
 #include <cstring>
 #include <stdexcept>
 
-// Convert 32-bit big-endian integer to host byte order
+// ===========================================================================
+// Формат файлов IDX (используется для набора данных MNIST)
+// ===========================================================================
+//
+// Файл изображений (train-images-idx3-ubyte, t10k-images-idx3-ubyte):
+//   Смещение | Тип      | Значение          | Описание
+//   ---------|----------|-------------------|----------------------------------
+//   0000     | 32-bit   | 2051 (0x00000803) | Magic number (идентификатор формата)
+//   0004     | 32-bit   | количество        | Число изображений
+//   0008     | 32-bit   | строки            | Число строк в каждом изображении
+//   0012     | 32-bit   | столбцы           | Число столбцов в каждом изображении
+//   0016     | uint8    | пиксель           | Первый пиксель первого изображения
+//   ...      | ...      | ...               | Остальные пиксели (по строкам)
+//
+// Файл меток (train-labels-idx1-ubyte, t10k-labels-idx1-ubyte):
+//   Смещение | Тип      | Значение          | Описание
+//   ---------|----------|-------------------|----------------------------------
+//   0000     | 32-bit   | 2049 (0x00000801) | Magic number
+//   0004     | 32-bit   | количество        | Число меток
+//   0008     | uint8    | метка             | Первая метка (цифра 0–9)
+//   ...      | ...      | ...               | Остальные метки
+//
+// Почему big-endian?
+//   Формат IDX был создан в эпоху, когда стандартные сетевые протоколы
+//   использовали big-endian (network byte order). Все многобайтовые значения
+//   в заголовке хранятся в big-endian независимо от архитектуры машины.
+//   На x86/x64 (little-endian) необходимо вручную конвертировать байты.
+//   Вместо htonl/ntohl (которые работают с 32-bit в хостовом порядке, но
+//   предназначены для сетевых соккетов) мы читаем байты явно — это проще
+//   и не зависит от платформы. Функция readBigEndian32 делает именно это.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// readBigEndian32 — чтение 32-битного целого из big-endian буфера
+// ---------------------------------------------------------------------------
+// Принимает указатель на 4 байта в big-endian порядке (старший байт первый)
+// и возвращает 32-битное значение в порядке хост-машины.
+//
+// Пример: байты [0x00, 0x00, 0x08, 0x03] -> 0x00000803 = 2051
+//
+// Сдвиги:
+//   buf[0] << 24  — старший байт (bits 24–31)
+//   buf[1] << 16  — следующий байт (bits 16–23)
+//   buf[2] <<  8  — следующий байт (bits  8–15)
+//   buf[3] <<  0  — младший байт  (bits  0–7)
+//
+// Почему не ntohl()?
+//   ntohl() ожидает uint32_t в big-endian, но чтобы её использовать, нужно
+//   сначала скопировать 4 байта в uint32_t, что на little-endian даст
+//   перевёрнутое значение. Явная побайтовая сборка надёжнее и нагляднее.
+// ---------------------------------------------------------------------------
 static uint32_t readBigEndian32(const unsigned char *buf)
 {
     return (static_cast<uint32_t>(buf[0]) << 24) |
@@ -14,51 +64,84 @@ static uint32_t readBigEndian32(const unsigned char *buf)
            (static_cast<uint32_t>(buf[3]) <<  0);
 }
 
+// ===========================================================================
+// readImages — чтение файла изображений в формате IDX
+// ===========================================================================
+// Открывает бинарный файл, проверяет magic number (2051), считывает
+// количество изображений, число строк и столбцов, затем последовательно
+// читает каждое изображение.
+//
+// Нормализация пикселей:
+//   В IDX-файле каждый пиксель хранится как uint8 (0–255).
+//   Для нейронной сети значения нормализуются в диапазон [0.0, 1.0]
+//   делением на 255.0f. Это важно, потому что:
+//     - Большие входные значения замедляют сходимость градиентного спуска
+//     - Нормализация делает градиенты более стабильными
+//     - Сигмоида лучше работает с входами в диапазоне [0, 1]
+//
+// Возвращает количество успешно загруженных изображений.
+// ===========================================================================
 size_t MnistReader::readImages(const std::string &filePath, MnistDataset &dataset)
 {
+    // Открываем файл в бинарном режиме (ios::binary обязателен, иначе
+    // на Windows переводы строк \r\n будут искажены)
     std::ifstream file(filePath, std::ios::binary);
     if (!file.is_open())
     {
         std::cerr << "ERROR: Cannot open image file: " << filePath << std::endl;
-        return 0;
+        return 0; // Возвращаем 0 — сигнал о невозможности чтения
     }
 
-    // Read header (16 bytes)
+    // -----------------------------------------------------------------------
+    // Чтение заголовка (16 байт = 4 × 32-bit big-endian значения)
+    // -----------------------------------------------------------------------
     unsigned char header[16];
     file.read(reinterpret_cast<char *>(header), 16);
     if (!file.good())
     {
         std::cerr << "ERROR: Failed to read image file header" << std::endl;
-        return 0;
+        return 0; // Файл слишком короткий или повреждён
     }
 
+    // Проверка magic number: 2051 = 0x00000803
+    //   0x00000800 — базовое значение для IDX-формата
+    //   0x03 — размерность (3D: count, rows, cols)
     uint32_t magic = readBigEndian32(header);
     if (magic != 2051)
     {
         std::cerr << "ERROR: Invalid image magic number: " << magic
                   << " (expected 2051)" << std::endl;
-        return 0;
+        return 0; // Файл не в формате IDX или это не изображения
     }
 
-    uint32_t numImages = readBigEndian32(header + 4);
-    uint32_t numRows   = readBigEndian32(header + 8);
-    uint32_t numCols   = readBigEndian32(header + 12);
+    // Извлекаем метаданные из заголовка
+    uint32_t numImages = readBigEndian32(header + 4); // смещение 4: количество
+    uint32_t numRows   = readBigEndian32(header + 8); // смещение 8: строки
+    uint32_t numCols   = readBigEndian32(header + 12); // смещение 12: столбцы
 
-    size_t pixelsPerImage = numRows * numCols; // should be 784
+    size_t pixelsPerImage = numRows * numCols; // Для MNIST: 28 × 28 = 784
 
     std::cout << "  Images file: " << filePath << std::endl;
     std::cout << "  Magic: " << magic
               << ", Count: " << numImages
               << ", Size: " << numRows << "x" << numCols << std::endl;
 
-    // Read pixel data
+    // -----------------------------------------------------------------------
+    // Чтение пиксельных данных
+    // -----------------------------------------------------------------------
+    // Используем временный буфер unsigned char для чтения сырых байтов.
+    // Каждый пиксель — это один байт (uint8) со значением 0–255.
+    // -----------------------------------------------------------------------
     std::vector<unsigned char> rawPixels(pixelsPerImage);
 
     for (uint32_t i = 0; i < numImages; i++)
     {
+        // Читаем все пиксели одного изображения за один вызов
         file.read(reinterpret_cast<char *>(rawPixels.data()), pixelsPerImage);
         if (!file.good())
         {
+            // Нечитабельный файл или EOF раньше времени.
+            // Не выбрасываем исключение — возвращаем то, что успели прочитать.
             std::cerr << "WARNING: Failed to read image #" << i << std::endl;
             break;
         }
@@ -66,18 +149,39 @@ size_t MnistReader::readImages(const std::string &filePath, MnistDataset &datase
         MnistImage img;
         img.pixels.resize(pixelsPerImage);
 
-        // Normalize: [0, 255] -> [0.0, 1.0]
+        // Нормализация: преобразуем uint8 [0, 255] -> float [0.0, 1.0]
+        //   0 / 255.0f = 0.0  (чёрный)
+        //   255 / 255.0f = 1.0 (белый)
+        // Деление на float (255.0f), а не на int, чтобы результат был float.
         for (size_t p = 0; p < pixelsPerImage; p++)
         {
             img.pixels[p] = rawPixels[p] / 255.0f;
         }
 
+        // std::move избегает копирования вектора пикселей
         dataset.images.push_back(std::move(img));
     }
 
     return dataset.images.size();
 }
 
+// ===========================================================================
+// readLabels — чтение файла меток в формате IDX
+// ===========================================================================
+// Открывает бинарный файл, проверяет magic number (2049), считывает
+// количество меток, затем последовательно читает каждую метку.
+//
+// Почему labels — uint8, а не float?
+//   Метки в MNIST — это целые числа 0–9 (цифры), представляющие класс.
+//   Это дискретные категории, а не непрерывные значения. В формате IDX
+//   каждая метка хранится как один байт (uint8). Преобразование в float
+//   бессмысленно: нейронная сеть на выходе produces probabilities (через
+//   softmax/sigmoid), а целевое значение — это индекс класса (one-hot
+//   или просто индекс для sparse cross-entropy). Хранение как uint8
+//   экономит память и соответствует семантике классификации.
+//
+// Возвращает количество успешно загруженных меток.
+// ===========================================================================
 size_t MnistReader::readLabels(const std::string &filePath, MnistDataset &dataset)
 {
     std::ifstream file(filePath, std::ios::binary);
@@ -87,7 +191,10 @@ size_t MnistReader::readLabels(const std::string &filePath, MnistDataset &datase
         return 0;
     }
 
-    // Read header (8 bytes)
+    // -----------------------------------------------------------------------
+    // Чтение заголовка (8 байт = 2 × 32-bit big-endian значения)
+    // Заголовок меток короче, потому что нет информации о размерах (rows/cols)
+    // -----------------------------------------------------------------------
     unsigned char header[8];
     file.read(reinterpret_cast<char *>(header), 8);
     if (!file.good())
@@ -96,6 +203,9 @@ size_t MnistReader::readLabels(const std::string &filePath, MnistDataset &datase
         return 0;
     }
 
+    // Проверка magic number: 2049 = 0x00000801
+    //   0x00000800 — базовое значение для IDX-формата
+    //   0x01 — размерность (1D: только count)
     uint32_t magic = readBigEndian32(header);
     if (magic != 2049)
     {
@@ -104,13 +214,15 @@ size_t MnistReader::readLabels(const std::string &filePath, MnistDataset &datase
         return 0;
     }
 
-    uint32_t numLabels = readBigEndian32(header + 4);
+    uint32_t numLabels = readBigEndian32(header + 4); // смещение 4: количество
 
     std::cout << "  Labels file: " << filePath << std::endl;
     std::cout << "  Magic: " << magic
               << ", Count: " << numLabels << std::endl;
 
-    // Read label data
+    // -----------------------------------------------------------------------
+    // Чтение меток: каждая метка — один байт (uint8), значение 0–9
+    // -----------------------------------------------------------------------
     for (uint32_t i = 0; i < numLabels; i++)
     {
         unsigned char label;
@@ -126,6 +238,19 @@ size_t MnistReader::readLabels(const std::string &filePath, MnistDataset &datase
     return dataset.labels.size();
 }
 
+// ===========================================================================
+// loadDataset — загрузка полного набора данных (изображения + метки)
+// ===========================================================================
+// Координирует загрузку обоих файлов, проверяет согласованность
+// количества изображений и меток, опционально ограничивает выборку.
+//
+// Обработка ошибок:
+//   - Если не удалось загрузить изображения ИЛИ метки -> возврат false
+//   - Если количество изображений != количеству меток -> предупреждение,
+//     но загрузка продолжается (обрезаются по минимуму в конце)
+//   - maxSamples > 0 ограничивает размер набора (полезно для быстрого
+//     тестирования на подмножестве данных)
+// ===========================================================================
 bool MnistReader::loadDataset(
     const std::string &imageFilePath,
     const std::string &labelFilePath,
@@ -133,32 +258,33 @@ bool MnistReader::loadDataset(
     size_t maxSamples
 )
 {
-    dataset.clear();
+    dataset.clear(); // Очищаем предыдущие данные, если были
 
-    // Load images
+    // Загрузка изображений
     size_t numImages = readImages(imageFilePath, dataset);
     if (numImages == 0)
     {
         std::cerr << "ERROR: No images loaded" << std::endl;
-        return false;
+        return false; // Критическая ошибка: без изображений обучение невозможно
     }
 
-    // Load labels
+    // Загрузка меток
     size_t numLabels = readLabels(labelFilePath, dataset);
     if (numLabels == 0)
     {
         std::cerr << "ERROR: No labels loaded" << std::endl;
-        return false;
+        return false; // Критическая ошибка: без меток обучение невозможно
     }
 
-    // Verify counts match
+    // Проверка согласованности: количество изображений должно совпадать
+    // с количеством меток. Расхождение означает повреждённые файлы.
     if (numImages != numLabels)
     {
         std::cerr << "WARNING: Image count (" << numImages
                   << ") != Label count (" << numLabels << ")" << std::endl;
     }
 
-    // Limit samples if requested
+    // Ограничение выборки (если запрошено)
     if (maxSamples > 0 && maxSamples < dataset.size())
     {
         dataset.images.resize(maxSamples);
@@ -166,7 +292,9 @@ bool MnistReader::loadDataset(
         std::cout << "  Limited to " << maxSamples << " samples" << std::endl;
     }
 
-    // Final verification: resize to match
+    // Финальная синхронизация: обрезаем оба массива до минимального размера,
+    // чтобы гарантировать image[i] <-> label[i] соответствие.
+    // Это защищает от рассогласования при повреждённых файлах.
     size_t count = std::min(dataset.images.size(), dataset.labels.size());
     dataset.images.resize(count);
     dataset.labels.resize(count);
@@ -175,6 +303,24 @@ bool MnistReader::loadDataset(
     return true;
 }
 
+// ===========================================================================
+// printSummary — вывод сводки о загруженном наборе данных
+// ===========================================================================
+// Печатает общее количество сэмплов, размер изображения и распределение
+// меток (сколько цифр 0–9 встречается в наборе).
+//
+// Распределение меток:
+//   Создаётся массив из 10 счётчиков (по одному на каждую цифру).
+//   Каждая метка используется как индекс в массиве labelCount.
+//   Проверка `labels[i] < 10` защищает от некорректных значений
+//   (выходящих за пределы 0–9), которые могли бы вызвать выход за границы
+//   массива — это форма защиты от buffer overflow.
+//
+// Зачем знать распределение?
+//   - Проверка баланса классов (в MNIST классы примерно сбалансированы)
+//   - Обнаружение аномалий (например, отсутствующий класс)
+//   - Отладка: если загрузился только один класс, что-то пошло не так
+// ===========================================================================
 void MnistReader::printSummary(const MnistDataset &dataset)
 {
     std::cout << "=== Dataset Summary ===" << std::endl;
@@ -182,12 +328,15 @@ void MnistReader::printSummary(const MnistDataset &dataset)
 
     if (dataset.size() > 0)
     {
+        // Размер одного изображения в пикселях (784 для MNIST 28×28)
         std::cout << "  Image size: " << dataset.images[0].pixels.size() << " pixels" << std::endl;
 
-        // Count label distribution
-        int labelCount[10] = {0};
+        // Подсчёт распределения меток
+        //   labelCount[0] — сколько нулей, labelCount[1] — сколько единиц, и т.д.
+        int labelCount[10] = {0}; // Инициализация нулями
         for (size_t i = 0; i < dataset.labels.size(); i++)
         {
+            // Защита от некорректной метки (>= 10), чтобы не выйти за границы массива
             if (dataset.labels[i] < 10)
             {
                 labelCount[dataset.labels[i]]++;

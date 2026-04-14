@@ -4,43 +4,74 @@
 #include <vector>
 #include <cstdint>
 
-/// Represents a single MNIST image (28x28 grayscale, normalized to [0, 1])
+/// Одна запись датасета MNIST: изображение 28x28 в оттенках серого.
+/// Пиксели хранятся как массив float со значениями в диапазоне [0, 1].
+/// Значение 0.0 — полностью чёрный пиксель, 1.0 — полностью белый.
+/// Нормализация из исходного диапазона [0, 255] происходит при чтении IDX-файла.
 struct MnistImage {
-    std::vector<float> pixels;  // 784 values
+    /// 784 значения (28 * 28), хранящиеся построчно: сначала первая строка изображения,
+    /// затем вторая и т.д. Индекс пикселя = row * 28 + col.
+    std::vector<float> pixels;
 };
 
-/// Complete MNIST dataset: images + labels
+/// Полный датасет MNIST: пары «изображение — метка».
+/// Метка (label) — целое число от 0 до 9, обозначающее цифру на изображении.
 struct MnistDataset {
+    /// Массив изображений. Размер всегда равен размеру labels.
     std::vector<MnistImage> images;
+
+    /// Массив меток. labels[i] соответствует images[i].
     std::vector<uint8_t> labels;
 
-    /// Returns number of samples
+    /// Возвращает количество семплов в датасете.
     size_t size() const {
         return images.size();
     }
 
-    /// Clear all data
+    /// Очищает все данные датасета, освобождая память.
     void clear() {
         images.clear();
         labels.clear();
     }
 };
 
-/// Reads MNIST data from IDX binary files
+/// Читает данные MNIST из двоичных файлов формата IDX.
+///
+/// Формат IDX (используется на сайте Yann LeCun для MNIST):
+/// - Файл изображений (IDX3): заголовок из 4 целых чисел big-endian
+///   (магическое число, количество изображений, строки, столбцы),
+///   затем сырые байты пикселей.
+/// - Файл меток (IDX1): заголовок из 2 целых чисел big-endian
+///   (магическое число, количество меток), затем по одному байту на метку.
+///
+/// Магическое число содержит тип данных и количество измерений.
+/// Для IDX3 изображений: 2051, для IDX1 меток: 2049.
+/// Проверка магического числа гарантирует, что файл действительно
+/// является IDX-файлом ожидаемого формата, а не произвольными данными.
 class MnistReader {
 public:
-    /// Read images from IDX3 file
-    /// Returns number of images loaded
+    /// Читает изображения из IDX3-файла и добавляет их в dataset.
+    /// Существующие данные в dataset не удаляются — изображения добавляются поверх.
+    /// Возвращает количество успешно прочитанных изображений.
     static size_t readImages(const std::string &filePath, MnistDataset &dataset);
 
-    /// Read labels from IDX1 file
-    /// Returns number of labels loaded
+    /// Читает метки из IDX1-файла и добавляет их в dataset.
+    /// Возвращает количество успешно прочитанных меток.
     static size_t readLabels(const std::string &filePath, MnistDataset &dataset);
 
-    /// Load a complete dataset (images + labels) from paired files
-    /// imageFilePath — path to images IDX3 file
-    /// labelFilePath — path to labels IDX1 file
-    /// maxSamples — limit number of samples (0 = load all)
+    /// Загружает полный датасет (изображения + метки) из пары IDX-файлов.
+    ///
+    /// Параметры:
+    ///   imageFilePath — путь к файлу изображений (IDX3, например train-images-idx3-ubyte)
+    ///   labelFilePath — путь к файлу меток (IDX1, например train-labels-idx1-ubyte)
+    ///   dataset       — структура, в которую будут загружены данные
+    ///   maxSamples    — максимальное количество семплов для загрузки.
+    ///                   Если равно 0 — загружаются все доступные семплы из файлов.
+    ///                   Ограничение полезно для быстрого прототипирования и отладки,
+    ///                   когда полный датасет (60 000 образцов) избыточен.
+    ///
+    /// Возвращает true при успешной загрузке, false в случае ошибки
+    /// (файл не найден, неверный формат, несовпадение количества изображений и меток).
     static bool loadDataset(
         const std::string &imageFilePath,
         const std::string &labelFilePath,
@@ -48,6 +79,11 @@ public:
         size_t maxSamples = 0
     );
 
-    /// Print dataset summary to stdout
+    /// Выводит сводку по датасету в stdout:
+    ///   - количество изображений
+    ///   - количество меток
+    ///   - размерность изображения (28x28)
+    ///   - распределение меток (сколько образцов каждой цифры 0–9)
+    /// Полезно для быстрой проверки корректности загруженных данных.
     static void printSummary(const MnistDataset &dataset);
 };
