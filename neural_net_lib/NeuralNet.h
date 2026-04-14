@@ -16,6 +16,9 @@ using Layer = std::vector<Neuron>;
 /// Матрица весов: [нейрон_выхода][нейрон_входа]
 using WeightMatrix = std::vector<std::vector<float>>;
 
+/// Тип инициализации весов
+enum WeightInit { INIT_UNIFORM, INIT_XAVIER, INIT_HE };
+
 /// Основная логика нейронной сети (stateless utility)
 class NeuralNet {
 private:
@@ -23,8 +26,11 @@ private:
     mutable std::default_random_engine rng_;
 
 public:
-    /// Диапазон инициализации весов [-weightRange, +weightRange]
+    /// Диапазон инициализации весов [-weightRange, +weightRange] (для INIT_UNIFORM)
     float weightRange = 0.5f;
+
+    /// По умолчанию — He инициализация (лучше для сигмоиды чем uniform)
+    WeightInit defaultInit = INIT_HE;
 
     NeuralNet();
 
@@ -48,7 +54,7 @@ public:
     void reversePass(const Layer &inL, const WeightMatrix &weN, Layer &ouL, int skipBiasIndex = -1);
 
     /// Инициализация весов случайными значениями
-    void randomizeWeights(WeightMatrix &we);
+    void randomizeWeights(WeightMatrix &we, WeightInit init = INIT_HE);
 
     /// Вычисление ошибок для скрытых слоёв (обратное распространение ошибки)
     void computeError(const Layer &inL, const WeightMatrix &weN, const Layer &ouL, Layer &outInL);

@@ -25,6 +25,9 @@ private:
     /// Скорость обучения
     float learningRate_;
 
+    /// Тип инициализации весов
+    WeightInit weightInit_ = INIT_HE;
+
 public:
     /// Конструктор
     explicit NeuralNetController(float learningRate);
@@ -57,6 +60,9 @@ public:
 
     /// Инициализация сети: bias + веса + рандомизация
     void initialize();
+
+    /// Установить тип инициализации весов (по умолчанию INIT_HE)
+    void setWeightInit(WeightInit init) { weightInit_ = init; }
 
     /// Добавить слой с указанным количеством нейронов
     void addLayer(int neuronCount);

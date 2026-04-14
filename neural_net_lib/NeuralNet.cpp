@@ -56,13 +56,27 @@ void NeuralNet::reversePass(const Layer &inL, const WeightMatrix &weN, Layer &ou
     }
 }
 
-void NeuralNet::randomizeWeights(WeightMatrix &we)
+void NeuralNet::randomizeWeights(WeightMatrix &we, WeightInit init)
 {
+    float scale = 0.5f; // default uniform range
+
+    if (init == INIT_XAVIER || init == INIT_HE)
+    {
+        int fanIn = static_cast<int>(we[0].size());
+        int fanOut = static_cast<int>(we.size());
+
+        if (init == INIT_XAVIER)
+            scale = std::sqrt(2.0f / (fanIn + fanOut));
+        else // INIT_HE
+            scale = std::sqrt(2.0f / fanIn);
+    }
+
+    std::uniform_real_distribution<float> dist(-scale, scale);
     for (auto &row : we)
     {
         for (auto &w : row)
         {
-            w = random(-weightRange, weightRange);
+            w = dist(rng_);
         }
     }
 }

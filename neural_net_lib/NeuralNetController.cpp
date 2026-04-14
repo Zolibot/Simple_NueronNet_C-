@@ -203,7 +203,7 @@ void NeuralNetController::randomizeWeights()
 {
     for (auto &wm : weights_)
     {
-        net_.randomizeWeights(wm);
+        net_.randomizeWeights(wm, weightInit_);
     }
 }
 
