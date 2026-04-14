@@ -21,7 +21,7 @@ static const int OUTPUT_SIZE = 10;
 
 static const float LEARNING_RATE = 0.5f;
 static const int MAX_EPOCHS = 5;
-static const int TRAIN_LIMIT = 5000;
+static const int TRAIN_LIMIT = 60000;
 static const int TEST_LIMIT = 0;
 
 static const std::string WEIGHTS_FILE = "../data/mnist_weights.w";
