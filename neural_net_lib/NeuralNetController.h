@@ -24,9 +24,19 @@ private:
 
     /// Скорость обучения
     float learningRate_;
+    
+    /// Learning rate decay
+    float learningRateDecay_ = 0.0f;
+    
+    /// Текущая эпоха для decay
+    int currentEpoch_ = 0;
 
     /// Тип инициализации весов
     WeightInit weightInit_ = INIT_HE;
+
+    /// Optimizer states
+    AdamState adamState_;
+    MomentumState momentumState_;
 
 public:
     /// Конструктор
@@ -63,6 +73,28 @@ public:
 
     /// Установить тип инициализации весов (по умолчанию INIT_HE)
     void setWeightInit(WeightInit init) { weightInit_ = init; }
+
+    /// Установить тип активации
+    void setActivation(ActivationType type) { net_.activationType = type; }
+
+    /// Установить оптимизатор
+    void setOptimizer(OptimizerType type) { net_.optimizerType = type; }
+
+    /// Установить dropout
+    void setDropout(float rate) { net_.useDropout = (rate > 0.0f); net_.dropoutRate = rate; }
+
+    /// Включить batch normalization
+    void setBatchNorm(bool enable) { net_.useBatchNorm = enable; }
+
+    /// Установить learning rate decay
+    void setLearningRateDecay(float decay) { learningRateDecay_ = decay; }
+
+    /// Обучение mini-batch
+    void trainMiniBatch(const std::vector<std::vector<float>> &inputs,
+                        const std::vector<std::vector<float>> &targets);
+
+    /// Обучение с Adam
+    void trainAdam(const float targets[]);
 
     /// Добавить слой с указанным количеством нейронов
     void addLayer(int neuronCount);

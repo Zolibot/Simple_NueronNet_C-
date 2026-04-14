@@ -4,10 +4,13 @@
 #include <random>
 #include <cmath>
 
+class NeuralNetController;
+
 /// Нейрон: выходное значение и ошибка (градиент)
 struct Neuron {
     float output;  // Результат после функции активации
     float error;   // Ошибка (градиент) для обратного распространения
+    float z;       // Взвешенная сумма до активации (для BatchNorm)
 };
 
 /// Слой нейронов
@@ -20,78 +23,100 @@ using WeightMatrix = std::vector<std::vector<float>>;
 enum WeightInit { INIT_UNIFORM, INIT_XAVIER, INIT_HE };
 
 /// Тип активации
-enum ActivationType { ACTIVATION_SIGMOID, ACTIVATION_RELU, ACTIVATION_LEAKY_RELU };
+enum ActivationType { ACTIVATION_SIGMOID, ACTIVATION_RELU, ACTIVATION_LEAKY_RELU, ACTIVATION_TANH };
 
 /// Оптимизатор
-enum OptimizerType { OPTIMIZER_SGD, OPTIMIZER_ADAM };
+enum OptimizerType { OPTIMIZER_SGD, OPTIMIZER_ADAM, OPTIMIZER_MOMENTUM };
 
 /// Основная логика нейронной сети (stateless utility)
 class NeuralNet {
 private:
-    /// Генератор случайных чисел (один на весь объект)
     mutable std::default_random_engine rng_;
 
 public:
-    /// Диапазон инициализации весов [-weightRange, +weightRange] (для INIT_UNIFORM)
+    int timestep_ = 0;  // Global timestep for Adam optimizer
     float weightRange = 0.5f;
-
-    /// По умолчанию — He инициализация (лучше для сигмоиды чем uniform)
     WeightInit defaultInit = INIT_HE;
-
     ActivationType activationType = ACTIVATION_SIGMOID;
-
     OptimizerType optimizerType = OPTIMIZER_SGD;
-
     float adamBeta1 = 0.9f;
     float adamBeta2 = 0.999f;
     float adamEpsilon = 1e-8f;
+    float momentum = 0.9f;
+    bool useBatchNorm = false;
+    float dropoutRate = 0.0f;
+    bool useDropout = false;
 
     NeuralNet();
 
-    /// Случайное число в диапазоне [low, high]
     float random(float low, float high);
 
-    /// Сигмоида: σ(x) = 1 / (1 + e^(-x))
     static float sigmoid(float x);
-
-    /// Производная сигмоиды: σ'(x) = σ(x) * (1 - σ(x))
     static float sigmoidDerivative(float activatedOutput);
 
-    /// ReLU: max(0, x)
     static float relu(float x);
-
-    /// Производная ReLU: 1 if x > 0, else 0
     static float reluDerivative(float x);
 
-    /// Leaky ReLU: x > 0 ? x : 0.01 * x
     static float leakyRelu(float x);
-
-    /// Производная Leaky ReLU: 1 if x > 0, else 0.01
     static float leakyReluDerivative(float x);
 
-    /// Глобальная активация и её производная
+    static float tanhActivation(float x);
+    static float tanhDerivative(float activatedOutput);
+
     static float activate(float x, ActivationType type);
     static float activateDerivative(float x, ActivationType type);
 
-    /// Прямое распространение (forward pass)
-    /// inL  — входной слой
-    /// weN  — матрица весов
-    /// ouL  — выходной слой (заполняется)
-    /// skipBiasIndex — индекс bias-нейрона в ouL (пропускается, -1 = нет bias)
     void forwardPass(const Layer &inL, const WeightMatrix &weN, Layer &ouL, int skipBiasIndex = -1);
+    void forwardPassWithDropout(const Layer &inL, const WeightMatrix &weN, Layer &ouL, Layer &dropoutMask, float dropoutRate, int skipBiasIndex = -1);
 
-    /// Обратное распространение (тестовая функция)
     void reversePass(const Layer &inL, const WeightMatrix &weN, Layer &ouL, int skipBiasIndex = -1);
 
-    /// Инициализация весов случайными значениями
     void randomizeWeights(WeightMatrix &we, WeightInit init = INIT_HE);
 
-    /// Вычисление ошибок для скрытых слоёв (обратное распространение ошибки)
     void computeError(const Layer &inL, const WeightMatrix &weN, const Layer &ouL, Layer &outInL);
+    void computeErrorWithDropout(const Layer &inL, const WeightMatrix &weN, const Layer &ouL, Layer &outInL, const Layer &dropoutMask, int skipBiasIndex = -1);
 
-    /// Корректировка весов (градиентный спуск)
     void backwardPass(const Layer &inL, WeightMatrix &weN, const Layer &ouL, float learningRate);
+    void backwardPassAdam(const Layer &inL, WeightMatrix &weN, const Layer &ouL, float learningRate, WeightMatrix &m, WeightMatrix &v, int t);
+    void backwardPassMomentum(const Layer &inL, WeightMatrix &weN, const Layer &ouL, float learningRate, WeightMatrix &velocity);
 
-    /// Вычисление ошибки выходного слоя: error[i] = target[i] - output[i]
     static void setOutputError(const float targets[], int len, Layer &ouL);
+};
+
+/// Batch Normalization структура
+struct BatchNormParams {
+    WeightMatrix gamma;  // масштабирование
+    WeightMatrix beta;   // сдвиг
+    WeightMatrix runningMean;
+    WeightMatrix runningVariance;
+    float momentum = 0.9f;
+    float epsilon = 1e-5f;
+    bool isTraining = true;
+};
+
+/// Класс для Mini-batch обучения
+class MiniBatchTrainer {
+public:
+    struct GradientAccumulator {
+        std::vector<WeightMatrix> gradients;
+        Layer outputErrorSum;
+        int sampleCount = 0;
+    };
+
+    static void initGradient(GradientAccumulator &acc, const std::vector<WeightMatrix> &weights, int outputSize);
+    static void accumulateGradient(GradientAccumulator &acc, const std::vector<WeightMatrix> &gradients, const Layer &outputError);
+    static void applyGradient(NeuralNetController &net, GradientAccumulator &acc, float learningRate, int batchSize);
+    static void resetGradient(GradientAccumulator &acc);
+};
+
+/// Adam optimizer состояние
+struct AdamState {
+    std::vector<WeightMatrix> m;  // first moment
+    std::vector<WeightMatrix> v;  // second moment
+    int t = 0;  // timestep
+};
+
+/// Momentum optimizer состояние
+struct MomentumState {
+    std::vector<WeightMatrix> velocity;
 };

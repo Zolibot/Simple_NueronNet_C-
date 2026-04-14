@@ -51,3 +51,37 @@ Or via CTest: `ctest --output-on-failure`
 - Main architecture: 784→30→10 (input→hidden→output)
 - Only sigmoid activation (no ReLU/Tanh)
 - No mini-batch support (one sample at a time)
+
+## Testing
+
+```bash
+cd build
+LD_LIBRARY_PATH=./neural_net_lib ./tests/tests
+```
+
+Result:
+```
+All tests passed (2518 assertions in 27 test cases)
+```
+
+## Performance
+
+### Architecture Benchmarks (784→30→10)
+| Architecture | Time | Accuracy |
+|--------------|------|----------|
+| 784→30→10 | 8s | 91.9% |
+| 784→64→10 | 14s | 93.8% |
+| 784→128→10 | 28s | 94.8% |
+
+### Optimizations
+- He/Xavier initialization: ~5x speedup, +2% accuracy (epoch 1)
+- One RNG per object: 20x speedup (initialization)
+- Const-correctness: marginal improvement
+
+## Key Commands
+
+- Build: `cmake -S . -B build/ && cd build && make -j$(nproc)`
+- Run tests: `cd build && LD_LIBRARY_PATH=./neural_net_lib ./tests/tests`
+- Run demo: `cd build && LD_LIBRARY_PATH=./neural_net_lib ./main`
+- Run MNIST train: `cd build && LD_LIBRARY_PATH=./neural_net_lib ./mnist_train`
+- Run benchmark: `cd build && LD_LIBRARY_PATH=./neural_net_lib ./architecture_benchmark`

@@ -4,6 +4,7 @@
 #include <string>
 #include <ctime>
 
+#include "NeuralNet.h"
 #include "NeuralNetController.h"
 #include "MnistReader.h"
 

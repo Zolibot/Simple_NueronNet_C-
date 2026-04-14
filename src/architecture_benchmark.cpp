@@ -4,7 +4,9 @@
 #include <string>
 #include <ctime>
 #include <iomanip>
+#include <algorithm>
 
+#include "NeuralNet.h"
 #include "NeuralNetController.h"
 #include "MnistReader.h"
 
@@ -18,7 +20,6 @@ static const std::string TEST_LABELS  = "../data/t10k-labels-idx1-ubyte";
 
 static const int INPUT_SIZE  = 784;
 static const int OUTPUT_SIZE = 10;
-static const float LEARNING_RATE = 0.5f;
 static const int MAX_EPOCHS = 5;
 static const int TRAIN_LIMIT = 5000;
 static const int TEST_LIMIT = 5000;
@@ -29,17 +30,40 @@ static const int TEST_LIMIT = 5000;
 struct ArchitectureConfig {
     std::string name;
     std::vector<int> hiddenLayers;
+    ActivationType activation;
+    OptimizerType optimizer;
+    float learningRate;
 };
 
 static const std::vector<ArchitectureConfig> CONFIGS = {
-    {"784->16->10",      {16}},
-    {"784->30->10",      {30}},
-    {"784->64->10",      {64}},
-    {"784->128->10",     {128}},
-    {"784->16->16->10",  {16, 16}},
-    {"784->30->30->10",  {30, 30}},
-    {"784->30->30->30->10", {30, 30, 30}},
-    {"784->30x5->10",    {30, 30, 30, 30, 30}},
+    // === SGD baseline (should work) ===
+    {"784->16->10 Sigmoid SGD",        {16},     ACTIVATION_SIGMOID, OPTIMIZER_SGD,     0.5f},
+    {"784->30->10 Sigmoid SGD",        {30},     ACTIVATION_SIGMOID, OPTIMIZER_SGD,     0.5f},
+    {"784->64->10 Sigmoid SGD",        {64},     ACTIVATION_SIGMOID, OPTIMIZER_SGD,     0.5f},
+    {"784->128->10 Sigmoid SGD",       {128},    ACTIVATION_SIGMOID, OPTIMIZER_SGD,     0.5f},
+
+    // === Adam (fixed timestep) ===
+    {"784->30->10 Sigmoid Adam",       {30},     ACTIVATION_SIGMOID, OPTIMIZER_ADAM,    0.001f},
+    {"784->64->10 Sigmoid Adam",       {64},     ACTIVATION_SIGMOID, OPTIMIZER_ADAM,    0.001f},
+    {"784->128->10 Sigmoid Adam",      {128},    ACTIVATION_SIGMOID, OPTIMIZER_ADAM,    0.001f},
+
+    // === Momentum ===
+    {"784->64->10 Sigmoid Momentum",   {64},     ACTIVATION_SIGMOID, OPTIMIZER_MOMENTUM,0.1f},
+
+    // === ReLU with Adam (gradient clipping) ===
+    {"784->64->10 ReLU Adam",          {64},     ACTIVATION_RELU,    OPTIMIZER_ADAM,    0.001f},
+    {"784->128->10 ReLU Adam",         {128},    ACTIVATION_RELU,    OPTIMIZER_ADAM,    0.001f},
+
+    // === LeakyReLU ===
+    {"784->64->10 LeakyReLU Adam",     {64},     ACTIVATION_LEAKY_RELU, OPTIMIZER_ADAM,  0.001f},
+    {"784->128->10 LeakyReLU Adam",    {128},    ACTIVATION_LEAKY_RELU, OPTIMIZER_ADAM,  0.001f},
+
+    // === Deep networks ===
+    {"784->64->32->10 ReLU Adam",      {64, 32}, ACTIVATION_RELU,    OPTIMIZER_ADAM,    0.001f},
+    {"784->64->32->10 LeakyReLU Adam", {64, 32}, ACTIVATION_LEAKY_RELU, OPTIMIZER_ADAM,  0.001f},
+
+    // === Tanh with scaled targets ===
+    {"784->64->10 Tanh Adam",          {64},     ACTIVATION_TANH,    OPTIMIZER_ADAM,    0.001f},
 };
 
 // ============================================================================
@@ -54,24 +78,32 @@ struct EpochResult {
 
 struct BenchmarkResult {
     std::string archName;
-    int numHiddenLayers;
-    int totalNeurons;
-    int totalParams;
-    float totalTime;
+    ActivationType activation;
+    int numHiddenLayers = 0;
+    int totalNeurons = 0;
+    int totalParams = 0;
+    float totalTime = 0.0f;
     std::vector<EpochResult> epochs;
-    float testAccuracy;
-    float evalTime;
-    int trainSize;
-    int testSize;
+    float testAccuracy = 0.0f;
+    float evalTime = 0.0f;
+    int trainSize = 0;
+    int testSize = 0;
 };
 
 // ============================================================================
 // Helpers
 // ============================================================================
-static void digitToTargets(int digit, float targets[], int outputSize)
+static void digitToTargets(int digit, float targets[], int outputSize, ActivationType activation)
 {
     for (int i = 0; i < outputSize; i++)
-        targets[i] = (i == digit) ? 0.9f : 0.1f;
+    {
+        if (activation == ACTIVATION_TANH)
+            targets[i] = (i == digit) ? 0.8f : -0.8f;
+        else if (activation == ACTIVATION_SIGMOID)
+            targets[i] = (i == digit) ? 0.9f : 0.1f;
+        else
+            targets[i] = (i == digit) ? 0.9f : 0.0f;
+    }
 }
 
 static int predictDigit(const NeuralNetController &brain, int outputLayerIndex)
@@ -92,6 +124,13 @@ static int countParams(const std::vector<int> &hidden)
     return total;
 }
 
+static int countTotalNeurons(const std::vector<int> &hidden)
+{
+    int total = 0;
+    for (int n : hidden) total += n;
+    return total;
+}
+
 // ============================================================================
 // Benchmark
 // ============================================================================
@@ -100,16 +139,20 @@ static BenchmarkResult benchmark(const ArchitectureConfig &cfg,
 {
     BenchmarkResult r;
     r.archName = cfg.name;
+    r.activation = cfg.activation;
     r.numHiddenLayers = static_cast<int>(cfg.hiddenLayers.size());
-    r.trainSize = train.size();
-    r.testSize = test.size();
-    for (int n : cfg.hiddenLayers) r.totalNeurons += n;
+    r.trainSize = static_cast<int>(train.size());
+    r.testSize = static_cast<int>(test.size());
+    r.totalNeurons = countTotalNeurons(cfg.hiddenLayers);
     r.totalParams = countParams(cfg.hiddenLayers);
 
     std::cout << "\n[" << cfg.name << "] (" << r.numHiddenLayers << " hidden, "
-              << r.totalNeurons << " neurons, " << r.totalParams << " params)" << std::endl;
+              << r.totalNeurons << " neurons, " << r.totalParams << " params, LR="
+              << cfg.learningRate << ")" << std::endl;
 
-    NeuralNetController brain(LEARNING_RATE);
+    NeuralNetController brain(cfg.learningRate);
+    brain.setActivation(cfg.activation);
+    brain.setOptimizer(cfg.optimizer);
     brain.addLayer(INPUT_SIZE);
     for (int n : cfg.hiddenLayers) brain.addLayer(n);
     brain.addLayer(OUTPUT_SIZE);
@@ -121,13 +164,12 @@ static BenchmarkResult benchmark(const ArchitectureConfig &cfg,
 
     for (int ep = 0; ep < MAX_EPOCHS; ep++)
     {
-        std::clock_t epStart = std::clock();
         float totalErr = 0; int correct = 0;
 
         for (size_t i = 0; i < train.size(); i++)
         {
             brain.setData(train.images[i].pixels.data(), static_cast<int>(train.images[i].pixels.size()), 0);
-            digitToTargets(train.labels[i], targets.data(), OUTPUT_SIZE);
+            digitToTargets(train.labels[i], targets.data(), OUTPUT_SIZE, cfg.activation);
             brain.train(targets.data());
             totalErr += brain.getError();
             if (predictDigit(brain, outIdx) == train.labels[i]) correct++;
@@ -181,23 +223,30 @@ static void saveReport(const std::vector<BenchmarkResult> &results)
 
     f << "# Architecture Benchmark Report\n\nDate: " << ts
       << "\nDataset: MNIST (train=" << results[0].trainSize << ", test=" << results[0].testSize
-      << ")\nLR: " << LEARNING_RATE << ", Epochs: " << MAX_EPOCHS << "\n\n";
+      << ")\nEpochs: " << MAX_EPOCHS << "\n\n";
 
-    f << "## Summary\n\n| # | Architecture | Hidden | Neurons | Params "
-      << "| Time | Train Acc | Test Acc |\n|---|---|---|---|---|---|---|---|\n";
+    f << "## Summary\n\n| # | Architecture | Hidden | Neurons | Params | LR "
+      << "| Time | Train Acc | Test Acc |\n|---|---|---|---|---|---|---|---|---|\n";
 
-    int bestIdx = 0;
-    for (size_t i = 1; i < results.size(); i++)
+    int bestIdx = 0, fastIdx = 0;
+    for (size_t i = 1; i < results.size(); i++) {
         if (results[i].testAccuracy > results[bestIdx].testAccuracy) bestIdx = static_cast<int>(i);
+        if (results[i].totalTime < results[fastIdx].totalTime) fastIdx = static_cast<int>(i);
+    }
 
     for (size_t i = 0; i < results.size(); i++)
     {
         auto &r = results[i];
+        std::string marker = "";
+        if (static_cast<int>(i) == bestIdx) marker = " ⭐";
+        if (static_cast<int>(i) == fastIdx) marker += " ⚡";
+
         f << "| " << (i + 1) << " | " << r.archName << " | " << r.numHiddenLayers
           << " | " << r.totalNeurons << " | " << r.totalParams
-          << " | " << std::fixed << std::setprecision(1) << r.totalTime << "s"
+          << " | " << std::fixed << std::setprecision(4) << 0.0f
+          << " | " << std::setprecision(1) << r.totalTime << "s"
           << " | " << std::setprecision(2) << r.epochs.back().trainAccuracy << "%"
-          << " | " << r.testAccuracy << "%" << (static_cast<int>(i) == bestIdx ? " ⭐" : "")
+          << " | " << r.testAccuracy << "%" << marker
           << " |\n";
     }
 
@@ -216,9 +265,18 @@ static void saveReport(const std::vector<BenchmarkResult> &results)
     f << "\n## Recommendations\n\n";
     f << "- **Best accuracy**: " << results[bestIdx].archName << " ("
       << std::setprecision(2) << results[bestIdx].testAccuracy << "%)\n";
-    f << "- **Recommended for quick test**: 784->16->10 (~80%, ~17s)\n";
-    f << "- **Recommended balance**: 784->30->10 (~87%, ~30s)\n";
-    f << "- **Maximum accuracy**: " << results[bestIdx].archName << "\n";
+    f << "- **Fastest**: " << results[fastIdx].archName << " ("
+      << std::setprecision(1) << results[fastIdx].totalTime << "s)\n";
+
+    // Working configs only
+    f << "\n### Working Configurations (test acc > 50%)\n\n";
+    f << "| Architecture | Test Acc | Time | Notes |\n|---|---|---|---|\n";
+    for (auto &r : results) {
+        if (r.testAccuracy > 50.0f) {
+            f << "| " << r.archName << " | " << std::setprecision(2) << r.testAccuracy
+              << "% | " << std::setprecision(1) << r.totalTime << "s | ✓ |\n";
+        }
+    }
 
     f.close();
     std::cout << "\nReport: ../data/architecture_benchmark.md" << std::endl;

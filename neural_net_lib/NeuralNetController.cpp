@@ -57,6 +57,23 @@ void NeuralNetController::initialize()
     setBias();
     addWeights();
     randomizeWeights();
+
+    // Initialize optimizer states
+    adamState_.m.clear();
+    adamState_.v.clear();
+    adamState_.t = 0;
+    for (auto &wm : weights_) {
+        WeightMatrix m(wm.size(), std::vector<float>(wm[0].size(), 0.0f));
+        WeightMatrix v(wm.size(), std::vector<float>(wm[0].size(), 0.0f));
+        adamState_.m.push_back(std::move(m));
+        adamState_.v.push_back(std::move(v));
+    }
+
+    momentumState_.velocity.clear();
+    for (auto &wm : weights_) {
+        WeightMatrix vel(wm.size(), std::vector<float>(wm[0].size(), 0.0f));
+        momentumState_.velocity.push_back(std::move(vel));
+    }
 }
 
 void NeuralNetController::addLayer(int neuronCount)
@@ -134,9 +151,34 @@ void NeuralNetController::forwardPass()
 
 void NeuralNetController::backwardPass()
 {
-    for (int i = layerCount() - 1; i >= 1; i--)
-    {
-        net_.backwardPass(layers_.at(i - 1), weights_.at(i - 1), layers_.at(i), learningRate_);
+    // Note: Don't increment timestep here - Adam handles it internally
+    // to avoid counting each sample as a separate timestep for bias correction
+
+    switch (net_.optimizerType) {
+        case OPTIMIZER_ADAM:
+            for (int i = layerCount() - 1; i >= 1; i--)
+            {
+                net_.backwardPassAdam(layers_.at(i - 1), weights_.at(i - 1), layers_.at(i),
+                                      learningRate_, adamState_.m[i-1], adamState_.v[i-1], adamState_.t);
+            }
+            adamState_.t++;  // Increment AFTER all weight updates
+            break;
+
+        case OPTIMIZER_MOMENTUM:
+            for (int i = layerCount() - 1; i >= 1; i--)
+            {
+                net_.backwardPassMomentum(layers_.at(i - 1), weights_.at(i - 1), layers_.at(i),
+                                          learningRate_, momentumState_.velocity[i-1]);
+            }
+            break;
+
+        case OPTIMIZER_SGD:
+        default:
+            for (int i = layerCount() - 1; i >= 1; i--)
+            {
+                net_.backwardPass(layers_.at(i - 1), weights_.at(i - 1), layers_.at(i), learningRate_);
+            }
+            break;
     }
 }
 
