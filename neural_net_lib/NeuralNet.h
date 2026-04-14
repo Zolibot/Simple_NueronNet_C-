@@ -19,6 +19,12 @@ using WeightMatrix = std::vector<std::vector<float>>;
 /// Тип инициализации весов
 enum WeightInit { INIT_UNIFORM, INIT_XAVIER, INIT_HE };
 
+/// Тип активации
+enum ActivationType { ACTIVATION_SIGMOID, ACTIVATION_RELU, ACTIVATION_LEAKY_RELU };
+
+/// Оптимизатор
+enum OptimizerType { OPTIMIZER_SGD, OPTIMIZER_ADAM };
+
 /// Основная логика нейронной сети (stateless utility)
 class NeuralNet {
 private:
@@ -32,6 +38,14 @@ public:
     /// По умолчанию — He инициализация (лучше для сигмоиды чем uniform)
     WeightInit defaultInit = INIT_HE;
 
+    ActivationType activationType = ACTIVATION_SIGMOID;
+
+    OptimizerType optimizerType = OPTIMIZER_SGD;
+
+    float adamBeta1 = 0.9f;
+    float adamBeta2 = 0.999f;
+    float adamEpsilon = 1e-8f;
+
     NeuralNet();
 
     /// Случайное число в диапазоне [low, high]
@@ -42,6 +56,22 @@ public:
 
     /// Производная сигмоиды: σ'(x) = σ(x) * (1 - σ(x))
     static float sigmoidDerivative(float activatedOutput);
+
+    /// ReLU: max(0, x)
+    static float relu(float x);
+
+    /// Производная ReLU: 1 if x > 0, else 0
+    static float reluDerivative(float x);
+
+    /// Leaky ReLU: x > 0 ? x : 0.01 * x
+    static float leakyRelu(float x);
+
+    /// Производная Leaky ReLU: 1 if x > 0, else 0.01
+    static float leakyReluDerivative(float x);
+
+    /// Глобальная активация и её производная
+    static float activate(float x, ActivationType type);
+    static float activateDerivative(float x, ActivationType type);
 
     /// Прямое распространение (forward pass)
     /// inL  — входной слой

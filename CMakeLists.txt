@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.20.5)
 project(SimpleNeuralNet)
 
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -flto -funroll-loops")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+
 enable_testing()
 
 set(SOURCE_EXE src/main.cpp)

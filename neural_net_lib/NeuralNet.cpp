@@ -25,6 +25,54 @@ float NeuralNet::sigmoidDerivative(float activatedOutput)
     return activatedOutput * (1.0f - activatedOutput);
 }
 
+float NeuralNet::relu(float x)
+{
+    return x > 0.0f ? x : 0.0f;
+}
+
+float NeuralNet::reluDerivative(float x)
+{
+    return x > 0.0f ? 1.0f : 0.0f;
+}
+
+float NeuralNet::leakyRelu(float x)
+{
+    return x > 0.0f ? x : 0.01f * x;
+}
+
+float NeuralNet::leakyReluDerivative(float x)
+{
+    return x > 0.0f ? 1.0f : 0.01f;
+}
+
+float NeuralNet::activate(float x, ActivationType type)
+{
+    switch (type)
+    {
+    case ACTIVATION_RELU:
+        return relu(x);
+    case ACTIVATION_LEAKY_RELU:
+        return leakyRelu(x);
+    case ACTIVATION_SIGMOID:
+    default:
+        return sigmoid(x);
+    }
+}
+
+float NeuralNet::activateDerivative(float activatedOutput, ActivationType type)
+{
+    switch (type)
+    {
+    case ACTIVATION_RELU:
+        return reluDerivative(activatedOutput);
+    case ACTIVATION_LEAKY_RELU:
+        return leakyReluDerivative(activatedOutput);
+    case ACTIVATION_SIGMOID:
+    default:
+        return sigmoidDerivative(activatedOutput);
+    }
+}
+
 void NeuralNet::forwardPass(const Layer &inL, const WeightMatrix &weN, Layer &ouL, int skipBiasIndex)
 {
     const int fanOut = static_cast<int>(weN.size());
