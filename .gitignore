@@ -26,7 +26,9 @@
 *.rar
 *.tar
 *.zip
-
+.clinerules*
+*.w
+*.gz
 # Logs and databases #
 ######################
 *.log
@@ -57,3 +59,22 @@ SConstruct
 .github/workflows/build.yml
 .github/workflows/clang-format.yml
 *.heapsnapshot
+
+# Compiled binaries #
+#####################
+main
+mnist_train
+architecture_benchmark
+tests/tests
+
+# Data files (large, should be downloaded separately) #
+######################################################
+data/*.ubyte
+data/*.gz
+data/performance_benchmark.md
+data/mnist_weights.w
+data/*.md
+
+# Misc #
+########
+*.w
