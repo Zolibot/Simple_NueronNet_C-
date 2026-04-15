@@ -56,3 +56,4 @@ SConstruct
 *.w
 .github/workflows/build.yml
 .github/workflows/clang-format.yml
+*.heapsnapshot
